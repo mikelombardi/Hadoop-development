@@ -1,6 +1,5 @@
 use customer_profile;
 
-
 --Remove all MyCTM Duplicates - this table will hold all duplicated emails
 drop table if exists customer_profile.MycTMDupes_ALL;
 Create table customer_profile.MycTMDupes_ALL as
@@ -13,17 +12,19 @@ group by email
 having c0 >1
 ) dupes;
 
+
 drop table if exists customer_profile.MycTMDupes_CleanEmails;
 create table customer_profile.MycTMDupes_CleanEmails as
 select email from 
 (
-select count(distinct lower(coalesce(haspassword,'False'))) c0, email
+select count(distinct lower(coalesce(haspassword,'False'))) c0, 
+  count(*) totalcount, email
 from myctm.myctm_accounts
 where lower(coalesce(haspassword,'False')) = 'true'
 group by email
   having c0 = 1
-) dupes;
-
+) dupes
+where c0 = totalcount ;
 
 drop table if exists customer_profile.MycTMDupes;
 Create table customer_profile.MycTMDupes as 
@@ -193,7 +194,7 @@ select
 Where accounts.RowNum = 1; -- Most recent entry
 
 
---Merge Previous queries with CDS accounts - creates a single account table with MYCTM, Speedtrap, money and CDS
+--Merge Previous queries with CDS accounts - creates a single account table with MYCTM, Speedtrap, money, travel and CDS
 Drop  table if exists customer_profile.customer_account_ParseA_Merge;
 Create table customer_profile.customer_account_ParseA_Merge as
 Select * from 
@@ -264,8 +265,9 @@ left join customer_profile.customer_account_ParseA ma
 where ma.email is null
 ) Accounts
 ;
-	
-	
+
+
+
 --Hash Creation across Profile Account table
 drop table if exists customer_profile.customer_account_ParseA_Hash;
 Create table customer_profile.customer_account_ParseA_Hash as 
@@ -329,8 +331,8 @@ drop table if exists customer_profile.EnquiryChangedRecords;
 Create table customer_profile.EnquiryChangedRecords as
 select distinct EnquiryChange.email
 from  customer_profile.newreward_uid  EnquiryChange;
-    
-	
+
+
 --Create ParseB Table (will be renamed to customer_account at the end of the process)
 --Will hold New, Updated and Unchanged accounts
 drop  table if exists customer_profile.customer_account_ParseB;
@@ -372,6 +374,8 @@ from customer_profile.customer_account_ParseA_Hash
 left join customer_profile.customer_account
 	on lower(trim(customer_account.email)) = lower(trim(customer_account_ParseA_Hash.email))
 where customer_account.email is null;
+
+
 
 --Insert unchanged customer accounts
 drop table if exists customer_profile.customer_account_ParseB_UnchangedRecords;
@@ -495,6 +499,25 @@ where EnquiryChangedRecords.email is not null
 ;
 
 
+--Create Updated Records
+drop table if exists customer_profile.customer_account_ParseB_UpdatedRecords;
+create table customer_profile.customer_account_ParseB_UpdatedRecords as
+Select 
+    customer_account_ParseA_Hash.*
+from customer_profile.customer_account_ParseA_Hash
+left join customer_profile.customer_account_ParseB
+	on lower(trim(customer_account_ParseB.email)) = lower(trim(customer_account_ParseA_Hash.email))
+where customer_account_ParseB.email is null;
+
+drop table if exists customer_profile.customer_account_ParseC ;
+Create table customer_profile.customer_account_ParseC as 
+select * from customer_profile.customer_account_ParseB ;
+
+
+drop table if exists customer_profile.customer_account_ParseB ;
+Create table customer_profile.customer_account_ParseB as 
+select * from customer_profile.customer_account_ParseC ;
+
 
 --insert updated customer account records
 insert into table customer_profile.customer_account_ParseB 
@@ -531,66 +554,7 @@ customer_account_ParseA_Hash.net_accountid,
 	customer_account_ParseA_Hash.haspassword,
 	customer_account_ParseA_Hash.lasttouchdate,
     customer_account_ParseA_Hash.MatchingHash
-from customer_profile.customer_account_ParseA_Hash
-join customer_profile.customer_account
+from customer_profile.customer_account_ParseB_UpdatedRecords customer_account_ParseA_Hash
+left join customer_profile.customer_account
 	on lower(trim(customer_account.email)) = lower(trim(customer_account_ParseA_Hash.email))
-where customer_account.MatchingHash <> customer_account_ParseA_Hash.MatchingHash ;
-
-
-drop table if exists customer_profile.customer_account_ParseC ;
-Create table customer_profile.customer_account_ParseC as 
-select * from customer_profile.customer_account_ParseB ;
-
-drop table if exists customer_profile.customer_account_garbage_processing_updates;
-create table customer_profile.customer_account_garbage_processing_updates as 
-select 'Updated Customers' Movetype,
-from_unixtime(unix_timestamp()) moveDate ,
-	u.email
-from customer_profile.customer_account_ParseC u
-Where upper(u.Movement) = 'UPDATE';
-
-drop table if exists customer_profile.customer_account_garbage_processing_enquiryupdates;
-create table customer_profile.customer_account_garbage_processing_enquiryupdates as 
-select 'Updated Enquiries' Movetype,
-from_unixtime(unix_timestamp()) moveDate,
-	u.email
-from customer_profile.EnquiryChangedRecords u
-left join customer_profile.customer_account_garbage_processing_updates on customer_account_garbage_processing_updates.email = u.email
-where customer_account_garbage_processing_updates.email is null;
-
-
-
-
-set hive.exec.dynamic.partition.mode=nonstrict;
-insert into table customer_profile.customer_account_garbage
-PARTITION (year, month, day)
-Select customer_account_garbage_processing_updates.Movetype,
-customer_account_garbage_processing_updates.moveDate,
-customer_account.*,
-    year(MovementDate) as year,
-	month(MovementDate) as month,
-	day(MovementDate) as day 
-from customer_profile.customer_account
-join customer_profile.customer_account_garbage_processing_updates on customer_account_garbage_processing_updates.email = customer_account.email;
-
-set hive.exec.dynamic.partition.mode=nonstrict;
-insert into table customer_profile.customer_account_garbage
-PARTITION (year, month, day)
-Select customer_account_garbage_processing_updates.Movetype,
-customer_account_garbage_processing_updates.moveDate,
-customer_account.*,
-    year(MovementDate) as year,
-	month(MovementDate) as month,
-	day(MovementDate) as day 
-from customer_profile.customer_account
-join customer_profile.customer_account_garbage_processing_enquiryupdates on customer_account_garbage_processing_enquiryupdates.email = customer_account.email;
-
-
-drop table IF EXISTS customer_profile.customer_account;
-ALTER TABLE customer_account_ParseC RENAME TO customer_account;
-
-insert into table customer_account_history
-Select *, 
-from_unixtime(unix_timestamp())  from customer_account ;
-
-￴￭￭￭坱ｄ䥣Ｕ䥣Ｕ䥣Ｕ䥣Ｕ䥣Ｕ䥣Ｕ魔ﾸ쥌￱￯칬￪꘠ￚ須ￕ琵ﾗ￭￭￭￭￭￭9｟틽ﾅ￭￭￭￭￭￭￭￭￭￭￭￭￭￭￭￭￭￭￭￭￭￭￭￭￭￭￭￭￭￭￭
+where customer_account.email is not null;
