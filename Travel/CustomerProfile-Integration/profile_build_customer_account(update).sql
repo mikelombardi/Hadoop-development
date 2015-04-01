@@ -173,25 +173,16 @@ select
     accounts.lasttouchdate
  from
  (select 
-		lower(trim(p.emailaddress)) as email,
+		p.email,
 		p.firstname as firstname,
 		p.surname as surname,
-		lower(trim(cp.marketingoptin))  as emailoptin,
-		ROW_NUMBER() OVER (PARTITION BY lower(trim(p.emailaddress))  ORDER BY rh.created desc) as RowNum,
-		from_unixtime(unix_timestamp(rh.created), 'yyyyMMdd') as lasttouchdate
-	from ctm_travel.policydetail p
-	inner join ctm_travel.riskheader rh
-		on p.aggregateid = rh.aggregateid
-	left outer join ctm_travel.visit v
-		on v.aggregateid = rh.journeyid
-	left outer join ctm_travel.contactpreference cp
-		on cp.aggregateid = rh.aggregateid
+		p.emailoptin,
+		p.lasttouchdate
+	from ctm_travel.travel_accounts p
 	left join customer_profile.customer_account_ParseA ma
-		on lower(trim(ma.email)) = lower(trim(p.emailaddress))
-	Where v.affcliecode not like 'TST%'
-	and ma.email is null -- Does not already exist as an account
+		on lower(trim(ma.email)) = p.email
+	Where ma.email is null -- Does not already exist as an account
 ) accounts
-Where accounts.RowNum = 1; -- Most recent entry
 
 
 --Merge Previous queries with CDS accounts - creates a single account table with MYCTM, Speedtrap, money, travel and CDS

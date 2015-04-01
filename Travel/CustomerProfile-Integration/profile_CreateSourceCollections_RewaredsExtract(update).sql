@@ -105,46 +105,32 @@ where to_date(allenquiries_history.enquirydatetime) >= date_add(from_unixtime(un
   --append last 11 months of Travel enquiries - AWS Source
 insert into table customer_profile.CustDataSet 
 Select 
-lower(trim(p.emailaddress)) email, 
-p.aggregateid as Riskheaderid,
-'TR' as productcode, 
-'Travel' as productname, 
-rh.created as EnquiryDateTime, 
-p.startdate as commencementdate, 
-counts.totalclickthroughs, 
-counts.totalshowdetails,
-cast(NULL as string) abicode,
-to_date(p.startdate) as GroupingDate,
+lower(trim(p.email)) email, 
+p.riskheaderid as Riskheaderid,
+p.productcode as productcode, 
+p.productname as productname, 
+p.enquirydatetime as EnquiryDateTime, 
+p.commencementdate as commencementdate, 
+p.totalclickthroughs, 
+p.totalshowdetails,
+p.abicode,
+p.commencementdate as GroupingDate,
 concat_ws(
             '|',
-			coalesce(lower(trim(p.emailaddress)), '#'),
-			coalesce(to_date(p.startdate), '#'), 
+			coalesce(lower(trim(p.email)), '#'),
+			coalesce(to_date(p.commencementdate), '#'), 
 			'tr',
 			'#'
 			) as grouping,
  concat_ws(
-            '|',
-'email',
-'commencementdate', 
-'productcode',
-'abicode'
-) as grouping_desc
-from ctm_travel.policydetail p
-inner join ctm_travel.riskheader rh
-	on p.aggregateid = rh.aggregateid
-left outer join ctm_travel.visit v
-	on v.aggregateid = rh.journeyid
-left outer join
-		(select 
-			aggregateid
-			, MAX(case when action = 'ClickThrough' then 1 else 0 end) as totalclickthroughs
-			, MAX(case when action = 'BridgingPanel' then 1 else 0 end) as totalshowdetails
-		 from ctm_travel.visitactivity
-		 Where action IN ('ClickThrough', 'BridgingPanel')
-		 group by aggregateid) as counts
-	on counts.aggregateid = rh.journeyid
-where to_date( rh.created) >= date_add(from_unixtime(unix_timestamp()),-335)
-and v.affcliecode not like 'TST%'
+			'|',
+			'email',
+			'commencementdate', 
+			'productcode',
+			'abicode'
+			) as grouping_desc
+from redpoint.travelenquiry p
+where p.lasttouchdate >= date_add(from_unixtime(unix_timestamp()),-335)
  ;
  
 --flag each enquiry with Maximum sale date associated with riskheaderid
