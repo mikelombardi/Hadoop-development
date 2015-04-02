@@ -248,9 +248,9 @@ select
 	ma.haspassword,
 	coalesce(ma.lasttouchdate, ca.lasttouchdate) as lasttouchdate
 from customer_profile.customer_account_ParseA ma
-inner join customer_profile.customer_account_merged ca
+left join customer_profile.customer_account_merged ca
 	on lower(trim(ma.email)) = ca.email
-where ca.rownum = 1 -- Latest entry 
+and ca.rownum = 1 -- Latest entry 
 UNION ALL
 select 
 	ca.source,
