@@ -118,7 +118,7 @@ p.commencementdate as GroupingDate,
 concat_ws(
             '|',
 			coalesce(lower(trim(p.email)), '#'),
-			coalesce(to_date(p.commencementdate), '#'), 
+			coalesce(p.commencementdate, '#'), 
 			'tr',
 			'#'
 			) as grouping,
@@ -192,7 +192,12 @@ left join
 and  trim(UPPER(allclaims_history.productname))= trim(UPPER(CustDataSet_WithSales.productname))
 ;
 
+-- Rebuild dataset to remove fragmentation
+create table customer_profile.CustDataSet_WithClaims_tmp as 
+select * from customer_profile.CustDataSet_WithClaims;
 
+Drop table if exists customer_profile.CustDataSet_WithClaims;
+ALTER TABLE CustDataSet_WithClaims_tmp RENAME TO CustDataSet_WithClaims;
 
 --Create a set of unique hash keys for full enquiry data set
 drop table if exists customer_profile.reward_uid_merge;

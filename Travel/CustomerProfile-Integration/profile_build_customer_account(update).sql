@@ -142,34 +142,20 @@ LEFT JOIN customer_profile.customer_account_ParseA ma
 	on lower(trim(ma.email)) = lower(trim(ca.email))
 where ma.email is null;
 
---insert Travel accounts where the email is not in previous query
-insert into table customer_profile.customer_account_ParseA
+
+-- Build Travel Accounts
+drop table if exists customer_profile.customer_account_travel;
+create table customer_profile.customer_account_travel as
 select 
-	'Travel' as source,
-	cast(NULL as string) accountid,
-    cast(NULL as string) bin_accountid,
-    cast(NULL as string) net_accountid,
-	cast(NULL as string) associateid,
+	'travel' as source,
 	accounts.email,
 	accounts.firstname,
 	accounts.surname,
-	cast(NULL as string) title,
-	cast(NULL as string) gender,
 	cast(NULL as string) as dateofbirth,
-	cast(NULL as string) maritalstatus,
 	accounts.emailoptin,
 	cast(NULL as string) as phoneoptin, 
 	cast(NULL as string) as smsoptin, 
 	cast(NULL as string) as postoptin,
-	cast(NULL as string) addresspostallineone, 
-	cast(NULL as string) addresspostallinetwo, 
-	cast(NULL as string) addresspostallinethree,
-	cast(NULL as string) addresspostallinefour,
-	cast(NULL as string) addresspostallinefive,
-	cast(NULL as string) addresspostallinesix,
-	cast(NULL as string) addresspostallineseven,
-	cast(NULL as string) postcode,
-	cast(NULL as string) haspassword,
     accounts.lasttouchdate
  from
  (select 
@@ -179,31 +165,75 @@ select
 		p.emailoptin,
 		p.lasttouchdate
 	from ctm_travel.travel_accounts p
-	left join customer_profile.customer_account_ParseA ma
-		on lower(trim(ma.email)) = p.email
-	Where ma.email is null -- Does not already exist as an account
 ) accounts
+;
+
+-- Combine and Rank non MyCTM Accounts
+drop table if exists customer_profile.customer_account_merged;
+create table customer_profile.customer_account_merged as
+select
+	source,
+	email,
+	firstname,
+	surname,
+	dateofbirth,
+	emailoptin,
+	phoneoptin, 
+	smsoptin, 
+	postoptin,
+	lasttouchdate,
+	ROW_NUMBER() OVER (PARTITION BY email  ORDER BY lasttouchdate desc) as RowNum
+from
+(
+	select 
+		source,
+		email,
+		firstname,
+		surname,
+		dateofbirth,
+		emailoptin,
+		phoneoptin, 
+		smsoptin, 
+		postoptin,
+		lasttouchdate
+	from customer_profile.customer_account_travel -- New Travel Accounts
+	UNION ALL
+	select 
+		'cds' as source,
+		email,
+		firstname,
+		surname,
+		dateofbirth,
+		emailoptin,
+		phoneoptin, 
+		smsoptin, 
+		postoptin,
+		regexp_replace(lasttouchdate,'-','') as lasttouchdate
+	from cds.cds_accounts -- CDS Accounts
+) accounts
+;
 
 
---Merge Previous queries with CDS accounts - creates a single account table with MYCTM, Speedtrap, money, travel and CDS
+--Merge Previous MyCTM with Non-MyCTM Accounts - creates a single account table with MYCTM, Speedtrap, money, travel and CDS
 Drop  table if exists customer_profile.customer_account_ParseA_Merge;
 Create table customer_profile.customer_account_ParseA_Merge as
 Select * from 
 (
-select 
-	coalesce(ma.source, 'cds') as source,
+select
+	coalesce(ma.source, ca.source) as source,
 	ma.accountid,
-       ma.bin_accountid,
-       ma.net_accountid,
+    ma.bin_accountid,
+    ma.net_accountid,
 	ma.associateid,
-	coalesce(lower(trim(ma.email)), lower(trim(ca.email))) as email,
+	coalesce(lower(trim(ma.email)), ca.email) as email,
 	coalesce(ma.firstname, ca.firstname) as firstname,
 	coalesce(ma.surname, ca.surname) as surname,
 	ma.title,
 	ma.gender,
 	coalesce(ma.dateofbirth, ca.dateofbirth) as dateofbirth,
 	ma.maritalstatus,
-	coalesce(ca.emailoptin, ma.emailoptin) as emailoptin,
+	-- Take opt in options from non MyCTM accounts as preference
+	coalesce(ca.emailoptin, ma.emailoptin) as emailoptin, 
 	coalesce(ca.phoneoptin, ma.phoneoptin) as phoneoptin, 
 	coalesce(ca.smsoptin, ma.smsoptin) as smsoptin, 
 	coalesce(ca.postoptin, ma.postoptin) as postoptin,
@@ -218,18 +248,17 @@ select
 	ma.haspassword,
 	coalesce(ma.lasttouchdate, ca.lasttouchdate) as lasttouchdate
 from customer_profile.customer_account_ParseA ma
-left join cds.cds_accounts ca
-	on lower(trim(ma.email)) = lower(trim(ca.email))
-where ma.email is not null
+inner join customer_profile.customer_account_merged ca
+	on lower(trim(ma.email)) = ca.email
+where ca.rownum = 1 -- Latest entry 
 UNION ALL
 select 
-	'cds' as source,
+	ca.source,
 	cast(NULL as string) accountid,
-       cast(NULL as string) bin_accountid,
-cast(NULL as string) net_accountid,
+    cast(NULL as string) bin_accountid,
+	cast(NULL as string) net_accountid,
 	cast(NULL as string) associateid,
-
-	lower(trim(ca.email)) as email,
+	ca.email as email,
 	ca.firstname as firstname,
 	ca.surname as surname,
 	cast(NULL as string) title,
@@ -250,10 +279,11 @@ cast(NULL as string) net_accountid,
 	cast(NULL as string) postcode,
 	cast(NULL as string) haspassword,
 	ca.lasttouchdate as lasttouchdate
-from cds.cds_accounts ca
+from customer_profile.customer_account_merged ca
 left join customer_profile.customer_account_ParseA ma
-	on lower(trim(ma.email)) = lower(trim(ca.email))
-where ma.email is null
+	on lower(trim(ma.email)) = ca.email
+where ma.email is null -- No MyCTM Account Present
+and ca.rownum = 1 -- Latest entry 
 ) Accounts
 ;
 

@@ -1,4 +1,4 @@
- drop VIEW if exists travel_accounts;
+drop VIEW if exists travel_accounts;
 CREATE VIEW travel_accounts AS 
  Select
  accounts.email,
@@ -11,7 +11,11 @@ CREATE VIEW travel_accounts AS
 		lower(trim(p.emailaddress)) as email,
 		p.firstname as firstname,
 		p.surname as surname,
-		lower(trim(cp.marketingoptin))  as emailoptin,
+		CASE lower(trim(cp.marketingoptin)) 
+			WHEN 'true' THEN 'Y' 
+			WHEN 'false' THEN 'N' 
+			ELSE lower(trim(cp.marketingoptin)) 
+		END  as emailoptin,
 		ROW_NUMBER() OVER (PARTITION BY lower(trim(p.emailaddress))  ORDER BY rh.created desc) as RowNum,
 		from_unixtime(unix_timestamp(rh.created), 'yyyyMMdd') as lasttouchdate
 	from ctm_travel.policydetail p
