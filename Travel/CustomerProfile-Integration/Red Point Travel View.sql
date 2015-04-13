@@ -47,6 +47,7 @@ inner join ctm_travel.riskheader rh
 	on p.aggregateid = rh.aggregateid
 left outer join ctm_travel.visit v
 	on v.aggregateid = rh.journeyid
+	and v.affcliecode not like 'TST%'
 left outer join
 		(select 
 			aggregateid
@@ -56,5 +57,5 @@ left outer join
 		 Where action IN ('ClickThrough', 'BridgingPanel')
 		 group by aggregateid) as counts
 	on counts.aggregateid = rh.journeyid
-Where v.affcliecode not like 'TST%'
+-- Where v.affcliecode not like 'TST%'
 ) Enquiries

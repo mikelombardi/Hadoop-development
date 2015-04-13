@@ -23,8 +23,9 @@ CREATE VIEW travel_accounts AS
 		on p.aggregateid = rh.aggregateid
 	left outer join ctm_travel.visit v
 		on v.aggregateid = rh.journeyid
+		and v.affcliecode not like 'TST%'
 	left outer join ctm_travel.contactpreference cp
 		on cp.aggregateid = rh.aggregateid
-	Where v.affcliecode not like 'TST%'
+	-- Where v.affcliecode not like 'TST%'
 ) accounts
 Where accounts.RowNum = 1; -- Most recent entry
